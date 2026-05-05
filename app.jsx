@@ -108,7 +108,7 @@ function Stepper({ value, onChange, min = 0, max = 15 }) {
 // ─────────────────────────────────────────────────────────
 // Mode: 내 위치 (소득 → %)
 // ─────────────────────────────────────────────────────────
-function PositionMode({ year, householdSize, baseIncome, monthlyIncome, setMonthlyIncome }) {
+function PositionMode({ year, householdSize, setHouseholdSize, baseIncome, monthlyIncome, setMonthlyIncome }) {
   const [unit, setUnit] = useState("월");
   const inputValue = unit === "월" ? monthlyIncome : monthlyIncome * 12;
   const handleIncomeChange = (v) => {
@@ -133,6 +133,15 @@ function PositionMode({ year, householdSize, baseIncome, monthlyIncome, setMonth
 
   return (
     <div className="mode-pane">
+      <div className="mode-context">
+        <div className="mode-context-label">기준 가구원 수</div>
+        <Stepper value={householdSize} onChange={setHouseholdSize} min={1} max={15} />
+        <div className="mode-context-stat">
+          <span className="muted small">{householdSize}인 가구 100% (월)</span>
+          <b>{fmt(baseIncome)}원</b>
+        </div>
+      </div>
+
       <div className="hero">
         <div className="hero-label">내 소득은 중위소득의</div>
         <div className="hero-value">
@@ -224,12 +233,21 @@ function PositionMode({ year, householdSize, baseIncome, monthlyIncome, setMonth
 // ─────────────────────────────────────────────────────────
 // Mode: 비율별 금액 조회 + 슬라이더
 // ─────────────────────────────────────────────────────────
-function PercentMode({ year, householdSize, baseIncome }) {
+function PercentMode({ year, householdSize, setHouseholdSize, baseIncome }) {
   const [pct, setPct] = useState(100);
   const customAmount = Math.floor(baseIncome * pct / 100);
 
   return (
     <div className="mode-pane">
+      <div className="mode-context">
+        <div className="mode-context-label">기준 가구원 수</div>
+        <Stepper value={householdSize} onChange={setHouseholdSize} min={1} max={15} />
+        <div className="mode-context-stat">
+          <span className="muted small">{householdSize}인 가구 100% (월)</span>
+          <b>{fmt(baseIncome)}원</b>
+        </div>
+      </div>
+
       <div className="card slider-card">
         <div className="eyebrow">직접 비율 입력</div>
         <div className="slider-row">
@@ -744,58 +762,50 @@ function App() {
         </div>
       </header>
 
-      <div className="layout">
-        <aside className="sidebar">
-          <div className="card sidebar-card">
-            <div className="eyebrow">기본 정보</div>
-            <Field label="가구원 수" hint="본인 포함 같은 세대">
-              <Stepper value={householdSize} onChange={setHouseholdSize} min={1} max={15} />
-            </Field>
-            <div className="sidebar-stat">
-              <div className="ss-label">{householdSize}인 가구 100% (월)</div>
-              <div className="ss-val">{fmt(baseIncome)}<span>원</span></div>
-              <div className="ss-sub">연 환산 {fmt(baseIncome * 12)}원</div>
-            </div>
-          </div>
+      <main className="main main-full">
+        <nav className="mode-nav">
+          {MODES.map(m => (
+            <Pill key={m.key} active={mode === m.key} onClick={() => setMode(m.key)}>
+              {m.label}
+              <span className="pill-sub">{m.desc}</span>
+            </Pill>
+          ))}
+        </nav>
 
-          <div className="caveat">
-            데이터 출처: 보건복지부 중앙생활보장위원회 고시.
-            정확한 자격 판단은 각 제도의 공식 안내를 확인하세요.
-          </div>
-        </aside>
+        {mode === "position" && (
+          <PositionMode
+            year={year}
+            householdSize={householdSize}
+            setHouseholdSize={setHouseholdSize}
+            baseIncome={baseIncome}
+            monthlyIncome={profile.monthlyIncome}
+            setMonthlyIncome={(v) => setProfile({ monthlyIncome: v })}
+          />
+        )}
+        {mode === "percent" && (
+          <PercentMode
+            year={year}
+            householdSize={householdSize}
+            setHouseholdSize={setHouseholdSize}
+            baseIncome={baseIncome}
+          />
+        )}
+        {mode === "wizard" && (
+          <WizardMode
+            year={year}
+            profile={profile}
+            setProfile={setProfile}
+            step={wizardStep}
+            setStep={setWizardStep}
+          />
+        )}
+        {mode === "matrix" && <MatrixMode year={year} />}
+      </main>
 
-        <main className="main">
-          <nav className="mode-nav">
-            {MODES.map(m => (
-              <Pill key={m.key} active={mode === m.key} onClick={() => setMode(m.key)}>
-                {m.label}
-                <span className="pill-sub">{m.desc}</span>
-              </Pill>
-            ))}
-          </nav>
-
-          {mode === "position" && (
-            <PositionMode
-              year={year}
-              householdSize={householdSize}
-              baseIncome={baseIncome}
-              monthlyIncome={profile.monthlyIncome}
-              setMonthlyIncome={(v) => setProfile({ monthlyIncome: v })}
-            />
-          )}
-          {mode === "percent" && <PercentMode year={year} householdSize={householdSize} baseIncome={baseIncome} />}
-          {mode === "wizard" && (
-            <WizardMode
-              year={year}
-              profile={profile}
-              setProfile={setProfile}
-              step={wizardStep}
-              setStep={setWizardStep}
-            />
-          )}
-          {mode === "matrix" && <MatrixMode year={year} />}
-        </main>
-      </div>
+      <footer className="app-footer">
+        데이터 출처: 보건복지부 중앙생활보장위원회 고시.
+        정확한 자격 판단은 각 제도의 공식 안내를 확인하세요.
+      </footer>
 
       <TweaksPanel>
         <TweakSection title="외관">
