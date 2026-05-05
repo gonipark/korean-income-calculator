@@ -580,11 +580,15 @@ function WizardMode({ year, profile, setProfile, step, setStep }) {
               <Field label="보유 부동산 가액" hint="없으면 0">
                 <NumberInput value={w.realEstateValue} onChange={(v) => set({ realEstateValue: v })} max={1e12} suffix="원" />
               </Field>
-              <Field label="금융자산 합계">
+              <Field label="금융자산 합계" hint="예금·주식·펀드 등">
                 <NumberInput value={w.financialAssets} onChange={(v) => set({ financialAssets: v })} max={1e12} suffix="원" />
               </Field>
+              <Field label="차량 가액" hint="보험개발원 차량가액 기준 · 없으면 0">
+                <NumberInput value={w.vehicleValue} onChange={(v) => set({ vehicleValue: v })} max={1e10} suffix="원" />
+              </Field>
               <p className="muted small grid-span-2">
-                자산은 참고용으로 표시되며, 실제 자격 판정은 제도별 자산 기준(자동차 포함)으로 별도 평가됩니다.
+                자산은 참고용으로 표시되며, 실제 자격 판정은 제도별 자산 기준으로 별도 평가됩니다.
+                (예: 청년 매입임대 차량가액 한도 약 3,803만원, 디딤돌 총자산 4.69억 등)
               </p>
             </div>
           )}
@@ -774,6 +778,7 @@ function App() {
     siblingsLivingTogether: 0,
     realEstateValue: 0,
     financialAssets: 0,
+    vehicleValue: 0,
   });
   const setProfile = (patch) => setProfileState((p) => ({ ...p, ...patch }));
   const [wizardStep, setWizardStep] = useState(0);
