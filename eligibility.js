@@ -1,5 +1,27 @@
-// 6개 제도 자격 자동 판정 (eligibility.py 포팅)
+// 6개 제도 자격 자동 판정 (소득 + 자산 기준)
 // data.js의 getMedianIncome가 globals에 노출되어 있음
+
+// ────────────────────── 자산 기준 상수 (2024년) ──────────────────────
+const VEHICLE_LIMIT = 38_030_000;          // 청년월세·신혼특공·청년매입임대 차량가액 한도
+const TOTAL_ASSET_LIMIT_YOUTH = 122_000_000;   // 청년월세 본인가구 총자산
+const REAL_ESTATE_LIMIT_NEWLYWED = 215_500_000; // 신혼특공 부동산
+const TOTAL_ASSET_LIMIT_DIDIM = 469_000_000;    // 디딤돌 총자산
+const VEH_NOTE_THRESHOLD_BASIC = 2_000_000;     // 생계/주거급여 차량 안내 기준
+
+// ────────────────────── 헬퍼 ──────────────────────
+function fmtAsset(n) {
+  if (n >= 100_000_000) {
+    const eok = Math.floor(n / 100_000_000);
+    const man = Math.floor((n % 100_000_000) / 10_000);
+    return man > 0 ? `${eok}억 ${man.toLocaleString()}만` : `${eok}억`;
+  }
+  if (n >= 10_000) return `${Math.floor(n / 10_000).toLocaleString()}만`;
+  return n.toLocaleString();
+}
+
+function totalAssets(p) {
+  return (p.realEstateValue || 0) + (p.financialAssets || 0) + (p.vehicleValue || 0);
+}
 
 function statusFromPct(myPct, thresholdPct) {
   if (myPct <= thresholdPct) return ["eligible", "✅ 소득 기준 충족"];
@@ -23,27 +45,36 @@ function householdIncomeBasic(p) {
   return income;
 }
 
+// ────────────────────── 제도별 판정 ──────────────────────
+
 function check생계급여(p) {
   const size = householdSizeBasic(p);
   const income = householdIncomeBasic(p);
   const median = getMedianIncome(p.year, size);
   const thr = 32;
   const myPct = (income / median) * 100;
-  const [status, label] = statusFromPct(myPct, thr);
+  let [status, label] = statusFromPct(myPct, thr);
+  const notes = [
+    "소득인정액 = 소득평가액 + 재산의 소득환산액 (실제 평가는 더 복잡)",
+    "근로·사업소득 30% 공제 등 소득인정액 산정 별도",
+    "2025년부터 부양의무자 기준 폐지",
+  ];
+  // 자동차 가액 100% 소득환산 (월) 또는 일반재산 4.17% 환산 — 차량 있으면 거의 탈락
+  if (p.vehicleValue >= VEH_NOTE_THRESHOLD_BASIC) {
+    notes.unshift(`⚠️ 차량가액 ${fmtAsset(p.vehicleValue)}원 → 월 4.17%(${fmtAsset(Math.floor(p.vehicleValue * 0.0417))}원)~100% 소득환산 적용 가능 (사실상 탈락 케이스 많음)`);
+    if (status === "eligible") {
+      status = "conditional";
+      label = "⚠️ 차량 보유 — 자산 환산 후 탈락 가능성 높음";
+    }
+  }
   return {
-    programId: "생계급여",
-    programName: "생계급여 (기초생활보장)",
-    category: "기초생활보장",
-    status, statusLabel: label,
+    programId: "생계급여", programName: "생계급여 (기초생활보장)",
+    category: "기초생활보장", status, statusLabel: label,
     householdSize: size, combinedIncome: income,
     thresholdPct: thr, thresholdAmount: Math.floor(median * thr / 100),
     myPercent: myPct,
     reasoning: `동일세대 ${size}인 기준, 가구 월소득 ${income.toLocaleString()}원 = 중위 ${myPct.toFixed(1)}%`,
-    notes: [
-      "재산 기준(자동차·금융자산·부동산) 별도 적용",
-      "근로·사업소득 30% 공제 등 소득인정액 산정 별도",
-      "2025년부터 부양의무자 기준 폐지",
-    ],
+    notes,
   };
 }
 
@@ -53,17 +84,23 @@ function check주거급여(p) {
   const median = getMedianIncome(p.year, size);
   const thr = 48;
   const myPct = (income / median) * 100;
-  const [status, label] = statusFromPct(myPct, thr);
+  let [status, label] = statusFromPct(myPct, thr);
+  const notes = [
+    "임차가구는 임차급여, 자가가구는 수선유지급여",
+    "지역별 기준임대료 한도 별도",
+    "기본재산공제: 대도시 9,900만/중소도시 8,000만/농어촌 4,500만",
+  ];
+  if (p.vehicleValue >= VEH_NOTE_THRESHOLD_BASIC) {
+    notes.unshift(`⚠️ 차량가액 ${fmtAsset(p.vehicleValue)}원 → 자산환산 적용 가능 (소득인정액에 포함)`);
+  }
   return {
-    programId: "주거급여",
-    programName: "주거급여 (기초생활보장)",
-    category: "기초생활보장",
-    status, statusLabel: label,
+    programId: "주거급여", programName: "주거급여 (기초생활보장)",
+    category: "기초생활보장", status, statusLabel: label,
     householdSize: size, combinedIncome: income,
     thresholdPct: thr, thresholdAmount: Math.floor(median * thr / 100),
     myPercent: myPct,
     reasoning: `동일세대 ${size}인 기준, 가구 월소득 ${income.toLocaleString()}원 = 중위 ${myPct.toFixed(1)}%`,
-    notes: ["임차가구는 임차급여, 자가가구는 수선유지급여", "지역별 기준임대료 한도 별도"],
+    notes,
   };
 }
 
@@ -111,6 +148,20 @@ function check청년월세(p) {
   else if (selfPct > 60) [status, label] = ["ineligible", `❌ 본인가구 소득 초과 (중위 ${selfPct.toFixed(1)}%)`];
   else [status, label] = ["ineligible", `❌ 원가구 소득 초과 (중위 ${(originPct ?? 0).toFixed(1)}%)`];
 
+  // 자산 체크: 본인가구 총자산 1.22억 + 차량 3,803만
+  const total = totalAssets(p);
+  if (status === "eligible") {
+    if (total > TOTAL_ASSET_LIMIT_YOUTH) {
+      status = "ineligible";
+      label = `❌ 본인가구 총자산 ${fmtAsset(total)}원 > 한도 1억 2,200만원`;
+    } else if (p.vehicleValue > VEHICLE_LIMIT) {
+      status = "ineligible";
+      label = `❌ 차량가액 ${fmtAsset(p.vehicleValue)}원 > 한도 3,803만원`;
+    } else if (total > 0 || p.vehicleValue > 0) {
+      notes.unshift(`✅ 자산 통과: 총 ${fmtAsset(total)}원 / 차량 ${fmtAsset(p.vehicleValue)}원 (한도 1.22억 / 3,803만)`);
+    }
+  }
+
   return {
     programId: "청년월세", programName: "청년월세 한시 특별지원",
     category: "주거지원", status, statusLabel: label,
@@ -146,14 +197,27 @@ function check신혼특공(p) {
   const median = getMedianIncome(p.year, size);
   const myPct = (income / median) * 100;
   const thr = isDual ? 120 : 100;
-  const [status, label] = statusFromPct(myPct, thr);
+  let [status, label] = statusFromPct(myPct, thr);
   const notes = [
     "혼인신고 7년 이내 + 무주택 세대구성원 전원 + 청약통장 가입 6개월·6회 납입",
     `${isDual ? "맞벌이" : "외벌이"} 기준 우선공급 한도 ${thr}% 적용`,
     "일반공급(외벌이 130/맞벌이 140%) 및 추첨제(180/200%) 별도 존재",
-    "자산 기준(부동산 + 자동차) 별도 적용",
   ];
   if (p.hasNewborn) notes.push("🍼 신생아 특별공급(별도): 2세 이하 자녀 있으면 우선 배정");
+
+  // 자산 체크: 부동산 2.15억 + 차량 3,803만
+  if (status === "eligible") {
+    if (p.realEstateValue > REAL_ESTATE_LIMIT_NEWLYWED) {
+      status = "ineligible";
+      label = `❌ 부동산 ${fmtAsset(p.realEstateValue)}원 > 한도 2억 1,550만원`;
+    } else if (p.vehicleValue > VEHICLE_LIMIT) {
+      status = "ineligible";
+      label = `❌ 차량가액 ${fmtAsset(p.vehicleValue)}원 > 한도 3,803만원`;
+    } else if (p.realEstateValue > 0 || p.vehicleValue > 0) {
+      notes.unshift(`✅ 자산 통과: 부동산 ${fmtAsset(p.realEstateValue)}원 / 차량 ${fmtAsset(p.vehicleValue)}원 (한도 2.15억 / 3,803만)`);
+    }
+  }
+
   return {
     programId: "신혼특공",
     programName: "신혼부부 특별공급 (공공분양 우선공급)",
@@ -215,6 +279,19 @@ function check청년매입임대(p) {
     [status, label] = ["ineligible", "❌ 소득 초과"];
     [size, income, myPct, thr] = [1, p.monthlyIncome, rank3Pct, 120];
   }
+  const notes = [
+    "1순위(생계/의료/주거급여 수급자, 차상위, 한부모, 보호종료 아동) 별도 우대",
+    "지역·평형별 임대료 상이",
+    "자산 한도(순위별): 1순위 자산기준 미적용 / 2순위 본인+부모 4.69억 / 3순위 본인 2.58억",
+  ];
+  // 자산 체크: 차량 3,803만 (자산 한도는 순위별 다양해서 차량만)
+  if (status === "eligible" && p.vehicleValue > VEHICLE_LIMIT) {
+    status = "ineligible";
+    label = `❌ 차량가액 ${fmtAsset(p.vehicleValue)}원 > 한도 3,803만원`;
+  } else if (status === "eligible" && p.vehicleValue > 0) {
+    notes.unshift(`✅ 차량가액 ${fmtAsset(p.vehicleValue)}원 (한도 3,803만)`);
+  }
+
   return {
     programId: "청년매입임대",
     programName: `청년 매입임대주택 (LH) — ${rank}`,
@@ -224,11 +301,7 @@ function check청년매입임대(p) {
     thresholdAmount: Math.floor(getMedianIncome(p.year, size) * thr / 100),
     myPercent: myPct,
     reasoning: `2순위 검사: 본인+부모 ${rank2Pct.toFixed(1)}% / 3순위 검사: 본인 ${rank3Pct.toFixed(1)}%`,
-    notes: [
-      "1순위(생계/의료/주거급여 수급자, 차상위, 한부모, 보호종료 아동) 별도 우대",
-      "자산 기준(총자산·자동차) 별도 적용",
-      "지역·평형별 임대료 상이",
-    ],
+    notes,
   };
 }
 
@@ -248,21 +321,37 @@ function check디딤돌(p) {
   else if (p.isMarried || p.numChildren >= 2) { annualLimit = 85_000_000; caseLabel = "신혼부부 또는 2자녀 이상"; }
   else { annualLimit = 60_000_000; caseLabel = "일반 (생애최초는 7,000만원)"; }
   const ok = annualIncome <= annualLimit;
+  let status = ok ? "eligible" : "ineligible";
+  let label = ok ? "✅ 소득 기준 충족" : "❌ 연소득 초과";
+  const notes = [
+    "주택가격 5억(신혼·2자녀 6억) 이하",
+    "전용 85㎡ 이하 (수도권 외 100㎡)",
+  ];
+
+  // 자산 체크: 총자산 4.69억
+  const total = totalAssets(p);
+  if (status === "eligible") {
+    if (total > TOTAL_ASSET_LIMIT_DIDIM) {
+      status = "ineligible";
+      label = `❌ 총자산 ${fmtAsset(total)}원 > 한도 4억 6,900만원`;
+    } else if (total > 0) {
+      notes.unshift(`✅ 총자산 통과: ${fmtAsset(total)}원 (한도 4.69억)`);
+    } else {
+      notes.unshift("총자산 4.69억 한도 (입력값 0원 → 한도 내)");
+    }
+  } else {
+    notes.unshift("총자산 4.69억원 이하 (별도 충족 필요)");
+  }
+
   return {
     programId: "디딤돌", programName: "디딤돌 대출 (주택구입자금)",
-    category: "대출",
-    status: ok ? "eligible" : "ineligible",
-    statusLabel: ok ? "✅ 소득 기준 충족" : "❌ 연소득 초과",
+    category: "대출", status, statusLabel: label,
     householdSize: p.isMarried ? 2 : 1,
     combinedIncome: Math.floor(annualIncome / 12),
     thresholdPct: 0, thresholdAmount: Math.floor(annualLimit / 12),
     myPercent: 0,
     reasoning: `${caseLabel} — 연소득 ${annualIncome.toLocaleString()}원 (한도 ${annualLimit.toLocaleString()}원)`,
-    notes: [
-      "총자산 4.69억원 이하 (2024년 기준)",
-      "주택가격 5억(신혼·2자녀 6억) 이하",
-      "전용 85㎡ 이하 (수도권 외 100㎡)",
-    ],
+    notes,
   };
 }
 
