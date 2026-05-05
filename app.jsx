@@ -108,11 +108,13 @@ function Stepper({ value, onChange, min = 0, max = 15 }) {
 // ─────────────────────────────────────────────────────────
 // Mode: 내 위치 (소득 → %)
 // ─────────────────────────────────────────────────────────
-function PositionMode({ year, householdSize, baseIncome }) {
-  const [mode, setMode] = useState("월");
-  const [income, setIncome] = useState(3_000_000);
-  const monthly = mode === "월" ? income : Math.floor(income / 12);
-  const pct = baseIncome ? (monthly / baseIncome) * 100 : 0;
+function PositionMode({ year, householdSize, baseIncome, monthlyIncome, setMonthlyIncome }) {
+  const [unit, setUnit] = useState("월");
+  const inputValue = unit === "월" ? monthlyIncome : monthlyIncome * 12;
+  const handleIncomeChange = (v) => {
+    setMonthlyIncome(unit === "월" ? v : Math.floor(v / 12));
+  };
+  const pct = baseIncome ? (monthlyIncome / baseIncome) * 100 : 0;
   const applicable = useMemo(() => findApplicablePrograms(pct), [pct]);
 
   // group by threshold
@@ -166,8 +168,8 @@ function PositionMode({ year, householdSize, baseIncome }) {
             </div>
           </div>
           <Segmented
-            value={mode}
-            onChange={setMode}
+            value={unit}
+            onChange={setUnit}
             options={[
               { value: "월", label: "월소득" },
               { value: "연", label: "연소득" },
@@ -176,15 +178,15 @@ function PositionMode({ year, householdSize, baseIncome }) {
         </div>
         <div className="big-input">
           <NumberInput
-            value={income}
-            onChange={setIncome}
+            value={inputValue}
+            onChange={handleIncomeChange}
             max={10_000_000_000}
             suffix="원"
           />
         </div>
         <div className="big-input-meta">
-          <span>월 환산 <b>{fmt(monthly)}</b>원</span>
-          <span>연 환산 <b>{fmt(monthly * 12)}</b>원</span>
+          <span>월 환산 <b>{fmt(monthlyIncome)}</b>원</span>
+          <span>연 환산 <b>{fmt(monthlyIncome * 12)}</b>원</span>
         </div>
       </div>
 
@@ -347,25 +349,10 @@ function MatrixMode({ year }) {
 // ─────────────────────────────────────────────────────────
 // Mode: 11문항 위저드 (섹션 카드 5개)
 // ─────────────────────────────────────────────────────────
-function WizardMode({ year }) {
-  const [step, setStep] = useState(0); // 0~4 = 입력 5단계, 5 = 결과
-  const [w, setW] = useState({
-    age: 30,
-    isHomeowner: false,
-    isHouseholdHead: true,
-    monthlyIncome: 3_000_000,
-    isMarried: false,
-    spouseLivingTogether: true,
-    spouseMonthlyIncome: 0,
-    numChildren: 0,
-    hasNewborn: false,
-    parentsLivingTogether: false,
-    parentsMonthlyIncome: 0,
-    siblingsLivingTogether: 0,
-    realEstateValue: 0,
-    financialAssets: 0,
-  });
-  const set = (patch) => setW({ ...w, ...patch });
+function WizardMode({ year, profile, setProfile, step, setStep }) {
+  // step 0~4 = 입력 5단계, 5 = 결과
+  const w = profile;
+  const set = setProfile;
 
   const STEPS = [
     { key: "self", title: "본인 정보", desc: "나이·소득·주택 보유" },
@@ -691,7 +678,27 @@ function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [year, setYear] = useState(2025);
   const [householdSize, setHouseholdSize] = useState(1);
-  const [mode, setMode] = useState("position"); // position | percent | wizard | matrix
+  const [mode, setMode] = useState("wizard"); // wizard | position | percent | matrix
+
+  // 위저드와 내 위치 모드가 공유하는 사용자 프로필 (소득·가족 정보)
+  const [profile, setProfileState] = useState({
+    age: 30,
+    isHomeowner: false,
+    isHouseholdHead: true,
+    monthlyIncome: 3_000_000,
+    isMarried: false,
+    spouseLivingTogether: true,
+    spouseMonthlyIncome: 0,
+    numChildren: 0,
+    hasNewborn: false,
+    parentsLivingTogether: false,
+    parentsMonthlyIncome: 0,
+    siblingsLivingTogether: 0,
+    realEstateValue: 0,
+    financialAssets: 0,
+  });
+  const setProfile = (patch) => setProfileState((p) => ({ ...p, ...patch }));
+  const [wizardStep, setWizardStep] = useState(0);
 
   const baseIncome = getMedianIncome(year, householdSize);
   const accent = ACCENTS[tweaks.accent] || ACCENTS.indigo;
@@ -706,8 +713,8 @@ function App() {
   }, [accent, tweaks.density]);
 
   const MODES = [
-    { key: "position", label: "내 위치", desc: "소득 → 중위 %" },
     { key: "wizard", label: "상황 진단", desc: "11문항 자격 진단" },
+    { key: "position", label: "내 위치", desc: "소득 → 중위 %" },
     { key: "percent", label: "비율 조회", desc: "%별 금액" },
     { key: "matrix", label: "전체표", desc: "가구 × 비율" },
   ];
@@ -767,9 +774,25 @@ function App() {
             ))}
           </nav>
 
-          {mode === "position" && <PositionMode year={year} householdSize={householdSize} baseIncome={baseIncome} />}
+          {mode === "position" && (
+            <PositionMode
+              year={year}
+              householdSize={householdSize}
+              baseIncome={baseIncome}
+              monthlyIncome={profile.monthlyIncome}
+              setMonthlyIncome={(v) => setProfile({ monthlyIncome: v })}
+            />
+          )}
           {mode === "percent" && <PercentMode year={year} householdSize={householdSize} baseIncome={baseIncome} />}
-          {mode === "wizard" && <WizardMode year={year} />}
+          {mode === "wizard" && (
+            <WizardMode
+              year={year}
+              profile={profile}
+              setProfile={setProfile}
+              step={wizardStep}
+              setStep={setWizardStep}
+            />
+          )}
           {mode === "matrix" && <MatrixMode year={year} />}
         </main>
       </div>
