@@ -159,8 +159,11 @@ function PositionMode({ year, householdSize, baseIncome }) {
       <div className="card input-card">
         <div className="card-head">
           <div>
-            <div className="eyebrow">소득 입력</div>
+            <div className="eyebrow">소득 입력 · 세전 기준</div>
             <h3>월 또는 연 소득</h3>
+            <div className="muted small" style={{ marginTop: 4 }}>
+              4대보험·세금 공제 <b>전</b> 금액 (근로소득 원천징수영수증의 총급여 ÷ 12)
+            </div>
           </div>
           <Segmented
             value={mode}
@@ -387,6 +390,27 @@ function WizardMode({ year }) {
 
   return (
     <div className="mode-pane wizard">
+      <div className="callout wiz-intro-callout">
+        <div style={{ marginBottom: 8 }}>
+          <strong>📋 입력 전 꼭 확인하세요</strong>
+        </div>
+        <div style={{ marginBottom: 6 }}>
+          <strong>소득</strong>: 모두 <strong>세전</strong> 기준이에요. 4대보험·세금 공제 전 금액
+          (근로소득 원천징수영수증의 총급여 ÷ 12, 사업자는 종합소득금액 ÷ 12).
+        </div>
+        <div>
+          <strong>가구원</strong>: 기본은 <strong>주민등록표상 같은 세대원</strong>이에요.
+          제도마다 산정 방식이 다른데, 이 위저드가 자동으로 처리합니다:
+          <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+            <li>생계·주거급여 → 동일세대 전체 (배우자·자녀·동거부모·동거형제 합산)</li>
+            <li>신혼특공 → 부부 + 자녀만 합산</li>
+            <li>청년월세 → 본인(+배우자)이 1차, 부모는 별도 원가구로 계산</li>
+            <li>청년 매입임대 → 본인 또는 본인+부모 (순위별 자동 판정)</li>
+            <li>디딤돌 대출 → 부부 합산 연소득</li>
+          </ul>
+        </div>
+      </div>
+
       <div className="wiz-progress">
         <div className="wiz-steps">
           {STEPS.map((s, i) => (
@@ -417,7 +441,7 @@ function WizardMode({ year }) {
               <Field label="만 나이">
                 <NumberInput value={w.age} onChange={(v) => set({ age: v })} max={120} suffix="세" />
               </Field>
-              <Field label="본인 월소득">
+              <Field label="본인 월소득" hint="세전 (4대보험·세금 공제 전)">
                 <NumberInput value={w.monthlyIncome} onChange={(v) => set({ monthlyIncome: v })} max={1e10} suffix="원" />
               </Field>
               <Field label="주택 소유 여부">
@@ -451,7 +475,7 @@ function WizardMode({ year }) {
                   <Field label="배우자와 동거">
                     <Toggle checked={w.spouseLivingTogether} onChange={(v) => set({ spouseLivingTogether: v })} label={w.spouseLivingTogether ? "동거 중" : "별거"} />
                   </Field>
-                  <Field label="배우자 월소득" hint="외벌이면 0">
+                  <Field label="배우자 월소득" hint="세전 / 외벌이면 0">
                     <NumberInput value={w.spouseMonthlyIncome} onChange={(v) => set({ spouseMonthlyIncome: v })} max={1e10} suffix="원" />
                   </Field>
                 </>
@@ -476,7 +500,7 @@ function WizardMode({ year }) {
                 <Toggle checked={w.parentsLivingTogether} onChange={(v) => set({ parentsLivingTogether: v })} label={w.parentsLivingTogether ? "동거 중" : "비동거"} />
               </Field>
               {w.parentsLivingTogether && (
-                <Field label="동거 부모 월소득 합계">
+                <Field label="동거 부모 월소득 합계" hint="부모 두 분 합산 · 세전">
                   <NumberInput value={w.parentsMonthlyIncome} onChange={(v) => set({ parentsMonthlyIncome: v })} max={1e10} suffix="원" />
                 </Field>
               )}
