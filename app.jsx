@@ -105,17 +105,64 @@ function Stepper({ value, onChange, min = 0, max = 15 }) {
   );
 }
 
+// 세전/실수령 토글이 붙은 월소득 입력
+// 내부 저장은 항상 세전(grossMonthly), 토글에 따라 실수령으로 변환해서 표시
+function SalaryInput({ grossMonthly, setGrossMonthly, max = 1e10 }) {
+  const [inputMode, setInputMode] = useState("gross"); // gross | net
+  const isNet = inputMode === "net";
+  const displayValue = isNet ? grossToTakeHome(grossMonthly) : grossMonthly;
+  const otherValue = isNet ? grossMonthly : grossToTakeHome(grossMonthly);
+  const otherLabel = isNet ? "세전 추정" : "실수령 추정";
+
+  const handleChange = (v) => {
+    if (isNet) setGrossMonthly(takeHomeToGross(v));
+    else setGrossMonthly(v);
+  };
+
+  return (
+    <div className="salary-input">
+      <div className="salary-input-toggle">
+        <Segmented
+          value={inputMode}
+          onChange={setInputMode}
+          options={[
+            { value: "gross", label: "세전" },
+            { value: "net", label: "실수령" },
+          ]}
+        />
+        {grossMonthly > 0 && (
+          <span className="salary-input-hint muted small">
+            {otherLabel} <b>{fmt(otherValue)}</b>원
+          </span>
+        )}
+      </div>
+      <NumberInput value={displayValue} onChange={handleChange} max={max} suffix="원" />
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────
 // Mode: 내 위치 (소득 → %)
 // ─────────────────────────────────────────────────────────
 function PositionMode({ year, householdSize, setHouseholdSize, baseIncome, monthlyIncome, setMonthlyIncome }) {
   const [unit, setUnit] = useState("월");
-  const inputValue = unit === "월" ? monthlyIncome : monthlyIncome * 12;
+  const [inputMode, setInputMode] = useState("gross"); // gross | net
+  const isNet = inputMode === "net";
+
+  // 표시값 계산 (세전/실수령 → 월/연)
+  const monthlyDisplay = isNet ? grossToTakeHome(monthlyIncome) : monthlyIncome;
+  const inputValue = unit === "월" ? monthlyDisplay : monthlyDisplay * 12;
+
   const handleIncomeChange = (v) => {
-    setMonthlyIncome(unit === "월" ? v : Math.floor(v / 12));
+    const monthlyVal = unit === "월" ? v : Math.floor(v / 12);
+    const grossMonthly = isNet ? takeHomeToGross(monthlyVal) : monthlyVal;
+    setMonthlyIncome(grossMonthly);
   };
+
+  // 항상 세전 월소득으로 % 계산
   const pct = baseIncome ? (monthlyIncome / baseIncome) * 100 : 0;
   const applicable = useMemo(() => findApplicablePrograms(pct), [pct]);
+  const takeHome = grossToTakeHome(monthlyIncome);
 
   // group by threshold
   const grouped = useMemo(() => {
@@ -170,20 +217,27 @@ function PositionMode({ year, householdSize, setHouseholdSize, baseIncome, month
       <div className="card input-card">
         <div className="card-head">
           <div>
-            <div className="eyebrow">소득 입력 · 세전 기준</div>
+            <div className="eyebrow">소득 입력</div>
             <h3>월 또는 연 소득</h3>
-            <div className="muted small" style={{ marginTop: 4 }}>
-              4대보험·세금 공제 <b>전</b> 금액 (근로소득 원천징수영수증의 총급여 ÷ 12)
-            </div>
           </div>
-          <Segmented
-            value={unit}
-            onChange={setUnit}
-            options={[
-              { value: "월", label: "월소득" },
-              { value: "연", label: "연소득" },
-            ]}
-          />
+          <div className="card-head-toggles">
+            <Segmented
+              value={inputMode}
+              onChange={setInputMode}
+              options={[
+                { value: "gross", label: "세전" },
+                { value: "net", label: "실수령" },
+              ]}
+            />
+            <Segmented
+              value={unit}
+              onChange={setUnit}
+              options={[
+                { value: "월", label: "월소득" },
+                { value: "연", label: "연소득" },
+              ]}
+            />
+          </div>
         </div>
         <div className="big-input">
           <NumberInput
@@ -194,9 +248,15 @@ function PositionMode({ year, householdSize, setHouseholdSize, baseIncome, month
           />
         </div>
         <div className="big-input-meta">
-          <span>월 환산 <b>{fmt(monthlyIncome)}</b>원</span>
-          <span>연 환산 <b>{fmt(monthlyIncome * 12)}</b>원</span>
+          <span>세전 월 <b>{fmt(monthlyIncome)}</b>원</span>
+          <span>실수령 추정 <b>{fmt(takeHome)}</b>원</span>
+          <span>세전 연 <b>{fmt(monthlyIncome * 12)}</b>원</span>
         </div>
+        {isNet && (
+          <div className="muted small" style={{ marginTop: 8 }}>
+            ※ 실수령 입력 시 부양가족 1인·근로소득자 기준으로 세전을 추정합니다 (오차 ±5%).
+          </div>
+        )}
       </div>
 
       <div className="section-head">
@@ -446,8 +506,8 @@ function WizardMode({ year, profile, setProfile, step, setStep }) {
               <Field label="만 나이">
                 <NumberInput value={w.age} onChange={(v) => set({ age: v })} max={120} suffix="세" />
               </Field>
-              <Field label="본인 월소득" hint="세전 (4대보험·세금 공제 전)">
-                <NumberInput value={w.monthlyIncome} onChange={(v) => set({ monthlyIncome: v })} max={1e10} suffix="원" />
+              <Field label="본인 월소득" hint="세전 또는 실수령 선택 입력">
+                <SalaryInput grossMonthly={w.monthlyIncome} setGrossMonthly={(v) => set({ monthlyIncome: v })} />
               </Field>
               <Field label="주택 소유 여부">
                 <Segmented

@@ -598,6 +598,42 @@ h4 { font-size: 16px; font-weight: 600; }
   text-align: center;
 }
 
+/* Salary input (세전/실수령 토글 + 환산 힌트) */
+.salary-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.salary-input-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.salary-input-hint {
+  margin-left: auto;
+}
+.salary-input-hint b {
+  color: var(--ink-70);
+  font-weight: 700;
+}
+
+/* PositionMode card-head: 두 개의 토글 (세전/실수령 + 월/연) */
+.card-head-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+@media (max-width: 640px) {
+  .card-head-toggles {
+    align-items: stretch;
+    width: 100%;
+  }
+}
+
 /* Program groups */
 .program-groups {
   display: flex;
