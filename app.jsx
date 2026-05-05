@@ -540,8 +540,8 @@ function WizardMode({ year, profile, setProfile, step, setStep }) {
                   <Field label="배우자와 동거">
                     <Toggle checked={w.spouseLivingTogether} onChange={(v) => set({ spouseLivingTogether: v })} label={w.spouseLivingTogether ? "동거 중" : "별거"} />
                   </Field>
-                  <Field label="배우자 월소득" hint="세전 / 외벌이면 0">
-                    <NumberInput value={w.spouseMonthlyIncome} onChange={(v) => set({ spouseMonthlyIncome: v })} max={1e10} suffix="원" />
+                  <Field label="배우자 월소득" hint="세전/실수령 토글 · 외벌이면 0">
+                    <SalaryInput grossMonthly={w.spouseMonthlyIncome} setGrossMonthly={(v) => set({ spouseMonthlyIncome: v })} />
                   </Field>
                 </>
               )}
@@ -565,8 +565,8 @@ function WizardMode({ year, profile, setProfile, step, setStep }) {
                 <Toggle checked={w.parentsLivingTogether} onChange={(v) => set({ parentsLivingTogether: v })} label={w.parentsLivingTogether ? "동거 중" : "비동거"} />
               </Field>
               {w.parentsLivingTogether && (
-                <Field label="동거 부모 월소득 합계" hint="부모 두 분 합산 · 세전">
-                  <NumberInput value={w.parentsMonthlyIncome} onChange={(v) => set({ parentsMonthlyIncome: v })} max={1e10} suffix="원" />
+                <Field label="동거 부모 월소득 합계" hint="부모 두 분 합산 · 세전/실수령 토글">
+                  <SalaryInput grossMonthly={w.parentsMonthlyIncome} setGrossMonthly={(v) => set({ parentsMonthlyIncome: v })} />
                 </Field>
               )}
               <Field label="동거 형제자매 수">
