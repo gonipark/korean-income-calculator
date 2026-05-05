@@ -14,6 +14,7 @@ from data import (
     find_applicable_programs,
     get_median_income,
 )
+from eligibility import UserProfile, evaluate_all
 
 st.set_page_config(
     page_title="기준중위소득 조회기",
@@ -56,9 +57,187 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────
 # 메인: 두 가지 탭
 # ─────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(
-    ["🔍 % 별 금액 조회", "📊 내 소득은 몇 %?", "📋 가구원 수 전체표"]
+tab0, tab1, tab2, tab3 = st.tabs(
+    [
+        "🎯 내 상황 진단",
+        "🔍 % 별 금액 조회",
+        "📊 내 소득은 몇 %?",
+        "📋 가구원 수 전체표",
+    ]
 )
+
+# ─────────────── Tab 0: 상황 진단 위저드 ───────────────
+with tab0:
+    st.subheader("내 상황으로 자격 가능한 제도 찾기")
+    st.write(
+        "11개 질문에 답하면 6개 주요 제도(생계급여·주거급여·청년월세·신혼특공·청년매입임대·디딤돌)의 "
+        "자격 여부를 자동 판정합니다."
+    )
+    st.info(
+        "💡 제도마다 '가구원 수'와 '합산 소득' 산정 방식이 달라요. "
+        "예를 들어 청년월세는 '본인 소득'을, 신혼특공은 '부부합산'을, 생계급여는 '주민등록 동일세대 전체'를 봅니다. "
+        "이 위저드가 그 차이를 자동으로 처리해줘요."
+    )
+
+    with st.form("situation_wizard"):
+        st.markdown("##### 1️⃣ 본인 정보")
+        c1, c2 = st.columns(2)
+        with c1:
+            w_age = st.number_input("만 나이", 0, 100, 30)
+            w_homeowner = st.radio(
+                "주택 소유 여부",
+                ["무주택", "유주택"],
+                horizontal=True,
+            ) == "유주택"
+        with c2:
+            w_head = st.radio(
+                "주민등록상 세대주?",
+                ["세대주", "세대원"],
+                horizontal=True,
+            ) == "세대주"
+            w_income = st.number_input(
+                "본인 월소득 (원)", 0, 100_000_000, 3_000_000, 100_000
+            )
+
+        st.divider()
+        st.markdown("##### 2️⃣ 배우자")
+        w_married = st.radio(
+            "결혼 여부",
+            ["미혼", "기혼"],
+            horizontal=True,
+        ) == "기혼"
+        w_spouse_living = False
+        w_spouse_income = 0
+        if w_married:
+            c1, c2 = st.columns(2)
+            with c1:
+                w_spouse_living = st.checkbox("배우자와 동거 중", value=True)
+            with c2:
+                w_spouse_income = st.number_input(
+                    "배우자 월소득 (원, 외벌이면 0)",
+                    0, 100_000_000, 0, 100_000,
+                )
+
+        st.divider()
+        st.markdown("##### 3️⃣ 자녀")
+        c1, c2 = st.columns(2)
+        with c1:
+            w_children = st.number_input(
+                "자녀 수 (만 30세 미만 미혼)", 0, 10, 0
+            )
+        with c2:
+            w_newborn = st.checkbox(
+                "만 2세 미만 자녀 있음", value=False,
+                help="신생아 특례(디딤돌·신혼특공) 자동 판정용",
+            )
+
+        st.divider()
+        st.markdown("##### 4️⃣ 부모·형제")
+        c1, c2 = st.columns(2)
+        with c1:
+            w_parents_living = st.checkbox(
+                "부모와 동거 중", value=False,
+                help="동거 부모는 가구원 수에 포함됩니다 (생계/주거급여 등)",
+            )
+            w_parents_income = 0
+            if w_parents_living:
+                w_parents_income = st.number_input(
+                    "동거 부모 월소득 합계 (원)",
+                    0, 100_000_000, 0, 100_000,
+                )
+        with c2:
+            w_siblings = st.number_input(
+                "동거 형제자매 수", 0, 10, 0
+            )
+
+        st.divider()
+        st.markdown("##### 5️⃣ 자산 (간이)")
+        c1, c2 = st.columns(2)
+        with c1:
+            w_re_value = st.number_input(
+                "보유 부동산 가액 (원)", 0, 10_000_000_000, 0, 10_000_000,
+                help="없으면 0",
+            )
+        with c2:
+            w_fin = st.number_input(
+                "금융자산 합계 (원)", 0, 10_000_000_000, 0, 1_000_000,
+            )
+
+        submitted = st.form_submit_button("🎯 진단하기", type="primary", use_container_width=True)
+
+    if submitted:
+        profile = UserProfile(
+            year=year,
+            age=w_age,
+            is_homeowner=w_homeowner,
+            is_household_head=w_head,
+            monthly_income=w_income,
+            is_married=w_married,
+            spouse_living_together=w_spouse_living,
+            spouse_monthly_income=w_spouse_income,
+            num_children=w_children,
+            has_newborn=w_newborn,
+            parents_living_together=w_parents_living,
+            parents_monthly_income=w_parents_income,
+            siblings_living_together=w_siblings,
+            real_estate_value=w_re_value,
+            financial_assets=w_fin,
+        )
+        results = evaluate_all(profile)
+        eligible = [r for r in results if r.status == "eligible"]
+        conditional = [r for r in results if r.status == "conditional"]
+        ineligible = [r for r in results if r.status == "ineligible"]
+
+        st.divider()
+        c1, c2, c3 = st.columns(3)
+        c1.metric("✅ 자격 가능", len(eligible))
+        c2.metric("⚠️ 추가확인", len(conditional))
+        c3.metric("❌ 자격 없음", len(ineligible))
+
+        if eligible:
+            st.markdown("### ✅ 자격 가능한 제도")
+            for r in eligible:
+                with st.container(border=True):
+                    st.markdown(f"**{r.program_name}** · _{r.category}_")
+                    st.caption(r.status_label)
+                    cc1, cc2, cc3 = st.columns(3)
+                    cc1.metric("적용 가구원 수", f"{r.household_size}인")
+                    cc2.metric("합산 월소득", f"{r.combined_income:,}원")
+                    if r.threshold_pct:
+                        cc3.metric(
+                            f"한도 (중위 {r.threshold_pct}%)",
+                            f"{r.threshold_amount:,}원",
+                        )
+                    st.markdown(f"📐 **판정 근거:** {r.reasoning}")
+                    if r.notes:
+                        with st.expander("추가 조건/주의사항"):
+                            for note in r.notes:
+                                st.markdown(f"- {note}")
+
+        if conditional:
+            st.markdown("### ⚠️ 추가 확인 필요")
+            for r in conditional:
+                with st.container(border=True):
+                    st.markdown(f"**{r.program_name}** · _{r.category}_")
+                    st.caption(r.status_label)
+                    st.markdown(f"📐 {r.reasoning}")
+                    if r.notes:
+                        for note in r.notes:
+                            st.caption(f"• {note}")
+
+        if ineligible:
+            with st.expander(f"❌ 자격 없는 제도 ({len(ineligible)}개) 보기"):
+                for r in ineligible:
+                    st.markdown(f"- **{r.program_name}** — {r.status_label}")
+                    st.caption(f"  {r.reasoning}")
+
+        st.divider()
+        st.warning(
+            "⚠️ **본 진단은 소득 기준 1차 스크리닝 결과입니다.** "
+            "실제 자격은 자산·연령·무주택 기간·청약통장·지역 등 추가 조건이 적용되며, "
+            "제도 세부 요건은 매년 변경됩니다. 신청 전 반드시 공식 안내(보건복지부, LH, "
+            "마이홈포털, 주택도시보증공사 등)를 확인하세요."
+        )
 
 # ─────────────── Tab 1: 비율별 금액 조회 ───────────────
 with tab1:
